@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard Digital Twin</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{ --bg:#0b0d12; --card:#141824; --muted:#8a93a6; --text:#e7ecf5; --ok:#15b374; --warn:#d97706; --bad:#ef4444; }
+    *{box-sizing:border-box}
+    body{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif }
+    header{ padding:16px 18px; border-bottom:1px solid #1f2433; display:flex; gap:14px; align-items:center; flex-wrap:wrap }
+    h2{ margin:0 }
+    .status{ font-size:14px; color:var(--muted); display:flex; align-items:center; gap:8px }
+    .dot{ width:10px; height:10px; border-radius:50%; background:#555 }
+    .status.ok .dot{ background:var(--ok) }
+    .status.bad .dot{ background:var(--bad) }
+    main{ padding:18px; max-width:1200px; margin:0 auto }
+    .grid{ display:grid; gap:14px; grid-template-columns:repeat(6,1fr) }
+    .card{ background:var(--card); border:1px solid #1f2433; border-radius:14px; padding:14px; box-shadow:0 6px 20px rgba(0,0,0,.25) }
+    .card h3{ margin:0 0 6px; font-size:12px; letter-spacing:.6px; text-transform:uppercase; color:var(--muted) }
+    .value{ font-size:22px; font-weight:700 }
+    .mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; color:#c9d4ee; font-size:12px; white-space:pre-wrap; word-break:break-word }
+    .pill{ display:inline-block; padding:6px 10px; border-radius:999px; font-weight:700; font-size:12px; border:1px solid transparent }
+    .pill.ok{ background:rgba(21,179,116,.1); color:var(--ok); border-color:rgba(21,179,116,.3) }
+    .pill.bad{ background:rgba(239,68,68,.1); color:var(--bad); border-color:rgba(239,68,68,.3) }
+    .pill.warn{ background:rgba(217,119,6,.1); color:var(--warn); border-color:rgba(217,119,6,.3) }
+    .muted{ color:var(--muted) }
+    .chart-card{ grid-column:span 6 }
+    .span2{ grid-column:span 2 }
+    .span3{ grid-column:span 3 }
+    @media (max-width:900px){ .grid{ grid-template-columns:repeat(3,1fr) } .chart-card{ grid-column:span 3 } }
+    @media (max-width:600px){ .grid{ grid-template-columns:repeat(2,1fr) } .chart-card{ grid-column:span 2 } }
+    .flash{ animation:flash .25s ease }
+    @keyframes flash{ from{ box-shadow:0 0 0 0 rgba(239,68,68,.6) } to{ box-shadow:0 0 0 10px rgba(239,68,68,0) } }
+  </style>
+</head>
+<body>
+<header>
+  <h2>Digital Twin</h2>
+  <div id="conn" class="status"><span class="dot"></span><span id="conn-txt">Conectando…</span></div>
+  <div class="muted" id="hints"></div>
+</header>
+
+<main>
+  <div class="grid">
+    <div class="card span2"><h3>Vibração (EMA)</h3><div class="value"><span id="vib">--</span> g</div></div>
+    <div class="card"><h3>Alarme</h3><div id="alarm" class="pill warn">Aguardando</div></div>
+    <div class="card"><h3>Beep</h3><div id="beep" class="pill ok">OFF</div></div>
+    <div class="card"><h3>FC Start (TOP t_ms)</h3><div class="value" id="fcStart">--</div></div>
+    <div class="card"><h3>FC End (BASE t_ms)</h3><div class="value" id="fcEnd">--</div></div>
+
+    <div class="card"><h3>Último ciclo (ms)</h3><div class="value" id="cycle">--</div></div>
+    <div class="card"><h3>Tempo desde último ciclo</h3><div class="value" id="sinceCycle">--</div></div>
+    <div class="card"><h3>Média ciclos (N)</h3><div class="value" id="avgCycle">--</div></div>
+    <div class="card"><h3>p95 ciclos</h3><div class="value" id="p95Cycle">--</div></div>
+    <div class="card"><h3>Mín / Máx (ms)</h3><div class="value" id="minmaxCycle">--</div></div>
+    <div class="card"><h3>Taxa (ciclos/min)</h3><div class="value" id="rate">--</div></div>
+
+    <div class="card"><h3>Total de ciclos</h3><div class="value" id="cycles">--</div></div>
+    <div class="card"><h3>Baseline (g)</h3><div class="value" id="base">--</div></div>
+    <div class="card"><h3>Tempo (host ms)</h3><div class="value" id="time">--</div></div>
+
+    <div class="card chart-card">
+      <h3>Vibração ao vivo</h3>
+      <canvas id="vibChart" height="110"></canvas>
+    </div>
+
+    <div class="card chart-card">
+      <h3>Último pacote</h3>
+      <div id="raw" class="mono">{ }</div>
+    </div>
+  </div>
+</main>
+
+<script>
+  // --- Query params: ws, vib_on, vib_off, ema_alpha, base_alpha, cycle_window ---
+  const qs = new URLSearchParams(location.search);
+  const wsOverride = qs.get('ws');
+  const VIB_ON     = parseFloat(qs.get('vib_on')     || '1.25'); // combine com limiar do firmware
+  const VIB_OFF    = parseFloat(qs.get('vib_off')    || '1.05');
+  const EMA_ALPHA  = parseFloat(qs.get('ema_alpha')  || '0.25');  // EMA rápida (vib_ema)
+  const BASE_ALPHA = parseFloat(qs.get('base_alpha') || '0.02');  // baseline lenta
+  const CYCLE_WINDOW = parseInt(qs.get('cycle_window') || '20', 10);
+
+  const guessedHost = (location.hostname==='localhost'||location.hostname==='127.0.0.1')
+      ? 'localhost' : location.hostname;
+  const WS_URL = `ws://${wsOverride || (guessedHost + ':3000')}`;
+
+  // --- UI helpers ---
+  const el = id => document.getElementById(id);
+  function setConn(cls, txt){ const c=el('conn'); c.className='status '+cls; el('conn-txt').textContent=txt; }
+  el('hints').textContent = `WS: ${WS_URL} | VIB_ON=${VIB_ON} VIB_OFF=${VIB_OFF} | EMA=${EMA_ALPHA} BASE=${BASE_ALPHA} | janela ciclos=${CYCLE_WINDOW}`;
+
+  // --- Chart setup ---
+  const ctx = document.getElementById('vibChart').getContext('2d');
+  const vibData = { labels:[], datasets:[{ label:'vib_ema (g)', data:[], tension:0.25, pointRadius:0, borderWidth:2 }]};
+  const chart = new Chart(ctx, { type:'line', data:vibData, options:{
+    animation:false, responsive:true,
+    scales:{ x:{ ticks:{ display:false } }, y:{ beginAtZero:true } },
+    plugins:{ legend:{ display:false } }
+  }});
+  const MAX_POINTS = 300; // ~90s se vier ~3.3Hz
+
+  // --- Estado derivado ---
+  let vibEma = null, baseEma = null, vibAlarm = false;
+  let lastTopMs = null, lastBaseMs = null, lastAdvanceMs = null;
+  let cyclesCount = 0, lastCycleComputedAt = null;
+  const cycleBuf = []; // {tHost, ms}
+
+  function quantile(sorted, q){ const p=(sorted.length-1)*q; const b=Math.floor(p); const r=p-b; return sorted[b+1]!==undefined ? sorted[b]+r*(sorted[b+1]-sorted[b]) : sorted[b]; }
+  function cycleStats(){
+    const arr = cycleBuf.slice(-CYCLE_WINDOW).map(c=>c.ms);
+    if (!arr.length) return null;
+    const sum = arr.reduce((a,b)=>a+b,0);
+    const mean = sum/arr.length;
+    const sorted=[...arr].sort((a,b)=>a-b);
+    const p95 = quantile(sorted, 0.95);
+    return {mean, p95, min:sorted[0], max:sorted[sorted.length-1], n:arr.length};
+  }
+  function cycleRatePerMin(now){ const ago=now-60000; return cycleBuf.filter(c=>c.tHost>=ago).length; }
+  function sinceLastCycle(now){ if(!cycleBuf.length) return null; return now - cycleBuf[cycleBuf.length-1].tHost; }
+
+  function onVibration(payload){
+    const now = Date.now();
+    const rms = Number(payload.rms);
+    if (Number.isFinite(rms)){
+      vibEma  = (vibEma  === null) ? rms : (EMA_ALPHA  * rms + (1-EMA_ALPHA)  * vibEma);
+      baseEma = (baseEma === null) ? rms : (BASE_ALPHA * rms + (1-BASE_ALPHA) * baseEma);
+
+      el('vib').textContent = vibEma.toFixed(3);
+      el('base').textContent = baseEma.toFixed(3);
+      el('time').textContent = now;
+
+      // Histerese de alarme com ON/OFF
+      if (!vibAlarm && vibEma >= VIB_ON)  vibAlarm = true;
+      if (vibAlarm  && vibEma <= VIB_OFF) vibAlarm = false;
+      const pill = el('alarm');
+      pill.className = 'pill ' + (vibAlarm ? 'bad' : 'ok');
+      pill.textContent = vibAlarm ? 'ALERTA' : 'OK';
+
+      // gráfico
+      vibData.labels.push('');
+      vibData.datasets[0].data.push(vibEma);
+      if (vibData.labels.length > MAX_POINTS){ vibData.labels.shift(); vibData.datasets[0].data.shift(); }
+      chart.update();
+    }
+  }
+
+  function flashBeep(){
+    const b = el('beep');
+    b.className = 'pill bad flash';
+    b.textContent = 'BEEP';
+    setTimeout(()=>{ b.className='pill ok'; b.textContent='OFF'; }, 250);
+  }
+
+  function onEvent(payload){
+    // payload: { event: "top"|"base", t_ms: <millis do ESP> }
+    const ev  = payload.event;
+    const tms = Number(payload.t_ms);
+    const nowHost = Date.now();
+    if (!Number.isFinite(tms)) return;
+
+    if (ev === 'top'){
+      el('fcStart').textContent = tms;
+      // retorno (base -> top)
+      if (lastBaseMs !== null){
+        const retorno = tms - lastBaseMs;
+        // se temos avanço anterior, temos um ciclo completo
+        if (lastAdvanceMs !== null){
+          const ciclo = lastAdvanceMs + retorno;
+          cyclesCount += 1;
+          lastCycleComputedAt = nowHost;
+          cycleBuf.push({ tHost: nowHost, ms: ciclo });
+          if (cycleBuf.length > 1000) cycleBuf.shift();
+          el('cycle').textContent = ciclo;
+          el('cycles').textContent = cyclesCount;
+        }
+        lastAdvanceMs = null; // zera após compor o ciclo
+      }
+      lastTopMs = tms;
+    } else if (ev === 'base'){
+      el('fcEnd').textContent = tms;
+      // avanço (top -> base)
+      if (lastTopMs !== null){
+        const avanco = tms - lastTopMs;
+        lastAdvanceMs = avanco;
+      }
+      lastBaseMs = tms;
+    }
+
+    flashBeep(); // corresponde ao beepShort do firmware
+
+    // métricas derivadas visuais
+    const st = cycleStats();
+    if (st){
+      el('avgCycle').textContent = `${st.mean.toFixed(0)}  (N=${st.n})`;
+      el('p95Cycle').textContent = st.p95.toFixed(0);
+      el('minmaxCycle').textContent = `${st.min.toFixed(0)} / ${st.max.toFixed(0)}`;
+    }
+    el('rate').textContent = cycleRatePerMin(nowHost).toFixed(0);
+    const since = sinceLastCycle(nowHost);
+    el('sinceCycle').textContent = since==null ? '—' : `${since.toFixed(0)} ms`;
+  }
+
+  // --- WebSocket com auto-reconnect ---
+  let ws;
+  function connectWS(){
+    setConn('bad','Conectando…');
+    try{ ws = new WebSocket(WS_URL); } catch(e){ setTimeout(connectWS, 1200); return; }
+    ws.onopen = ()=> setConn('ok','Conectado');
+    ws.onclose= ()=> { setConn('bad','Desconectado'); setTimeout(connectWS, 1200); };
+    ws.onerror= ()=> setConn('bad','Erro');
+    ws.onmessage = (ev)=>{
+      let msg; try{ msg = JSON.parse(ev.data); } catch{ return; }
+      // Espera-se: { topic: "mpu/vibration"|"cycle/events", payload: {...} }
+      el('raw').textContent = JSON.stringify(msg, null, 2);
+
+      if (!msg || typeof msg !== 'object') return;
+      if (!('topic' in msg) || !('payload' in msg)) return;
+
+      if (msg.topic === 'mpu/vibration'){
+        onVibration(msg.payload);
+      } else if (msg.topic === 'cycle/events'){
+        onEvent(msg.payload);
+      }
+    };
+  }
+  connectWS();
+</script>
+</body>
+</html>

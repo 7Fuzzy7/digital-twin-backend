@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Digital Twin — Ciclo (Ideal vs Real) + Vibração</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root{ --bg:#0b0d12; --card:#141824; --muted:#8a93a6; --text:#e7ecf5; --ok:#15b374; --bad:#ef4444; --warn:#d97706; }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif }
+  header{ padding:16px 18px; border-bottom:1px solid #1f2433; display:flex; gap:14px; align-items:center; flex-wrap:wrap }
+  h2{ margin:0 }
+  .status{ font-size:14px; color:var(--muted); display:flex; align-items:center; gap:8px }
+  .dot{ width:10px; height:10px; border-radius:50%; background:#555 }
+  .status.ok .dot{ background:var(--ok) }
+  .status.bad .dot{ background:var(--bad) }
+  main{ padding:18px; max-width:1200px; margin:0 auto }
+  .grid{ display:grid; gap:14px; grid-template-columns:repeat(6,1fr) }
+  .card{ background:var(--card); border:1px solid #1f2433; border-radius:14px; padding:14px; box-shadow:0 6px 20px rgba(0,0,0,.25) }
+  .card h3{ margin:0 0 6px; font-size:12px; letter-spacing:.6px; text-transform:uppercase; color:var(--muted) }
+  .value{ font-size:22px; font-weight:700 }
+  .sub{ font-size:12px; color:var(--muted) }
+  .pill{ display:inline-block; padding:6px 10px; border-radius:999px; font-weight:700; font-size:12px; border:1px solid transparent }
+  .pill.ok{ background:rgba(21,179,116,.1); color:var(--ok); border-color:rgba(21,179,116,.3) }
+  .pill.bad{ background:rgba(239,68,68,.1); color:var(--bad); border-color:rgba(239,68,68,.3) }
+  .pill.warn{ background:rgba(217,119,6,.1); color:var(--warn); border-color:rgba(217,119,6,.3) }
+  .muted{ color:var(--muted) }
+  .span2{ grid-column:span 2 }
+  .span3{ grid-column:span 3 }
+  .chart-card{ grid-column:span 6 }
+  /* linha de gráficos com proporção 2/3 : 1/3 */
+  .charts-row{ display:grid; grid-template-columns: 2fr 1fr; gap:14px; }
+  @media (max-width:900px){ .grid{ grid-template-columns:repeat(3,1fr) } .chart-card{ grid-column:span 3 } .charts-row{ grid-template-columns:1fr } }
+  @media (max-width:600px){ .grid{ grid-template-columns:repeat(2,1fr) } .chart-card{ grid-column:span 2 } .charts-row{ grid-template-columns:1fr } }
+  pre{ margin:0; background:#0f1422; color:#c9d4ee; padding:12px; border-radius:12px; font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; max-height:260px; overflow:auto }
+</style>
+</head>
+<body>
+<header>
+  <h2>Digital Twin — Ciclo</h2>
+  <div id="conn" class="status"><span class="dot"></span><span id="conn-txt">Conectando…</span></div>
+  <div id="hints" class="muted"></div>
+</header>
+
+<main>
+  <div class="grid">
+    <!-- Ideal -->
+    <div class="card span2">
+      <h3>Ideal</h3>
+      <div class="value"><span id="ideal_ms">--</span> ms</div>
+      <div class="sub">Tolerância: ±<span id="tol_ms">--</span> ms • Alvo: <span id="ideal_cpm">--</span> cpm</div>
+    </div>
+
+    <!-- Último ciclo (Real) -->
+    <div class="card span2">
+      <h3>Último ciclo (Real)</h3>
+      <div class="value"><span id="real_ms">--</span> ms</div>
+      <div class="sub">Avanço: <span id="adv_ms">--</span> ms • Retorno: <span id="ret_ms">--</span> ms</div>
+    </div>
+
+    <!-- Erro e Status -->
+    <div class="card">
+      <h3>Erro</h3>
+      <div class="value"><span id="err_ms">--</span> ms</div>
+      <div class="sub">(<span id="err_pct">--</span>%)</div>
+    </div>
+    <div class="card">
+      <h3>Status</h3>
+      <div id="status_pill" class="pill warn">Aguardando</div>
+    </div>
+
+    <!-- CPM -->
+    <div class="card">
+      <h3>CPM (Inst.)</h3>
+      <div class="value" id="cpm_inst">--</div>
+    </div>
+    <div class="card">
+      <h3>CPM (Janela)</h3>
+      <div class="value" id="cpm_win">--</div>
+      <div class="sub">N=<span id="win_n">--</span></div>
+    </div>
+
+    <!-- Janela de ciclos -->
+    <div class="card">
+      <h3>Média (Janela)</h3>
+      <div class="value" id="avg_ms">--</div>
+    </div>
+    <div class="card">
+      <h3>p95</h3>
+      <div class="value" id="p95_ms">--</div>
+    </div>
+    <div class="card">
+      <h3>Mín / Máx</h3>
+      <div class="value"><span id="min_ms">--</span> / <span id="max_ms">--</span></div>
+    </div>
+    <div class="card">
+      <h3>Ciclos processados</h3>
+      <div class="value" id="seq">--</div>
+    </div>
+  </div>
+
+  <!-- Linha de gráficos: Ciclo (2/3) + Vibração (1/3) -->
+  <div class="charts-row" style="margin-top:14px;">
+    <div class="card">
+      <h3>Ciclo (ms) — Real vs Ideal</h3>
+      <canvas id="chartCycle" height="160"></canvas>
+    </div>
+    <div class="card">
+      <h3>Vibração (RMS & EMA)</h3>
+      <canvas id="chartVib" height="160"></canvas>
+      <div class="sub">EMA α=<span id="vib_alpha_lbl"></span> • RMS=<span id="vib_rms_lbl">--</span> g • EMA=<span id="vib_ema_lbl">--</span> g</div>
+    </div>
+  </div>
+
+  <div class="card chart-card" style="margin-top:14px;">
+    <h3>Erro do Ciclo (ms)</h3>
+    <canvas id="chartError" height="140"></canvas>
+  </div>
+
+  <div class="card chart-card" style="margin-top:14px;">
+    <h3>Último pacote</h3>
+    <pre id="raw">{}</pre>
+  </div>
+</main>
+
+<script>
+  // ====== CONFIG via querystring ======
+  const qs = new URLSearchParams(location.search);
+  const wsOverride = qs.get('ws');
+
+  let idealMs = parseInt(qs.get('ideal_ms') || '500', 10);
+  let tolMs   = parseInt(qs.get('tol_ms')   || '25', 10);
+  let winN    = parseInt(qs.get('win')      || '20', 10);
+
+  // vibração (EMA local sobre RMS)
+  let VIB_ALPHA = parseFloat(qs.get('vib_alpha') || '0.25'); // 0..1 (maior = mais responsivo)
+  el = (id)=>document.getElementById(id);
+
+  const guessedHost = (location.hostname==='localhost'||location.hostname==='127.0.0.1')
+        ? 'localhost' : location.hostname;
+  const WS_URL = wsOverride || `ws://${guessedHost}:3000`;
+
+  // ====== UI helpers ======
+  function setConn(cls, txt){ const c=el('conn'); c.className='status '+cls; el('conn-txt').textContent=txt; }
+  function setPill(ok){ const p=el('status_pill'); p.className='pill ' + (ok?'ok':'bad'); p.textContent= ok?'PASS':'FAIL'; }
+
+  el('ideal_ms').textContent = idealMs;
+  el('tol_ms').textContent   = tolMs;
+  el('ideal_cpm').textContent = (60000/idealMs).toFixed(1);
+  el('win_n').textContent    = winN;
+  el('vib_alpha_lbl').textContent = VIB_ALPHA.toFixed(2);
+  el('hints').textContent    = `WS: ${WS_URL} | ideal=${idealMs}ms ±${tolMs}ms | janela=${winN} | vib_alpha=${VIB_ALPHA}`;
+
+  // ====== Charts ======
+  const MAXPTS = 180;
+
+  // Ciclo
+  const labels = [], realArr = [], idealArr = [], errArr = [];
+  const chartCycle = new Chart(document.getElementById('chartCycle').getContext('2d'), {
+    type:'line',
+    data:{ labels, datasets:[
+      { label:'Real (ms)', data: realArr, borderWidth:2, pointRadius:0, tension:0.2 },
+      { label:'Ideal (ms)', data: idealArr, borderWidth:1, pointRadius:0, borderDash:[6,6], tension:0.0 }
+    ]},
+    options:{ animation:false, responsive:true, plugins:{legend:{display:true}}, scales:{ x:{ticks:{display:false}} } }
+  });
+  const chartError = new Chart(document.getElementById('chartError').getContext('2d'), {
+    type:'line',
+    data:{ labels, datasets:[ { label:'Erro (ms)', data: errArr, borderWidth:2, pointRadius:0, tension:0.2 } ]},
+    options:{ animation:false, responsive:true, plugins:{legend:{display:true}}, scales:{ x:{ticks:{display:false}}, y:{beginAtZero:false} } }
+  });
+
+  // Vibração
+  const vibLabels = [], vibRmsArr = [], vibEmaArr = [];
+  let vibEma = null;
+  const chartVib = new Chart(document.getElementById('chartVib').getContext('2d'), {
+    type:'line',
+    data:{ labels:vibLabels, datasets:[
+      { label:'EMA (g)', data: vibEmaArr, borderWidth:2, pointRadius:0, tension:0.2 },
+      { label:'RMS (g)', data: vibRmsArr, borderWidth:1, pointRadius:0, tension:0.2, borderDash:[4,4] }
+    ]},
+    options:{ animation:false, responsive:true, plugins:{legend:{display:true}}, scales:{ x:{ticks:{display:false}}, y:{beginAtZero:true} } }
+  });
+
+  function pushCyclePoint(seq, realMs, errMs){
+    labels.push(String(seq));
+    realArr.push(realMs);
+    idealArr.push(idealMs);
+    errArr.push(errMs);
+    if(labels.length > MAXPTS){ labels.shift(); realArr.shift(); idealArr.shift(); errArr.shift(); }
+    chartCycle.update(); chartError.update();
+  }
+  function pushVib(rms){
+    vibLabels.push('');
+    vibRmsArr.push(rms);
+    if (vibEma===null) vibEma = rms; else vibEma = VIB_ALPHA*rms + (1-VIB_ALPHA)*vibEma;
+    vibEmaArr.push(vibEma);
+    el('vib_rms_lbl').textContent = rms.toFixed(3);
+    el('vib_ema_lbl').textContent = vibEma.toFixed(3);
+    if(vibLabels.length > MAXPTS){ vibLabels.shift(); vibRmsArr.shift(); vibEmaArr.shift(); }
+    chartVib.update();
+  }
+
+  // ====== WS ======
+  let ws;
+  function connectWS(){
+    setConn('bad','Conectando…');
+    ws = new WebSocket(WS_URL);
+    ws.onopen = ()=> setConn('ok','Conectado');
+    ws.onclose= ()=> { setConn('bad','Desconectado'); setTimeout(connectWS, 1200); };
+    ws.onerror= ()=> setConn('bad','Erro');
+
+    ws.onmessage = (ev)=>{
+      let msg; try{ msg = JSON.parse(ev.data); }catch{ return; }
+      el('raw').textContent = JSON.stringify(msg, null, 2);
+
+      // vibração direta do ESP
+      if (msg.topic === 'mpu/vibration'){
+        const p = msg.payload || {};
+        if (typeof p.rms === 'number') pushVib(Number(p.rms));
+        return;
+      }
+
+      // twin/config
+      if (msg.topic === 'twin/config'){
+        const p = msg.payload || {};
+        if (typeof p.ideal_cycle_ms === 'number'){ idealMs = p.ideal_cycle_ms; el('ideal_ms').textContent=idealMs; el('ideal_cpm').textContent=(60000/idealMs).toFixed(1); }
+        if (typeof p.tolerance_ms === 'number'){ tolMs = p.tolerance_ms; el('tol_ms').textContent = tolMs; }
+        if (typeof p.window_n === 'number'){ winN = p.window_n; el('win_n').textContent = winN; }
+        return;
+      }
+
+      if (msg.topic !== 'twin/state') return;
+      const p = msg.payload || {};
+
+      // Cards principais
+      if (typeof p.observed_cycle_ms === 'number') el('real_ms').textContent = p.observed_cycle_ms;
+      if (typeof p.t_avanco_ms === 'number') el('adv_ms').textContent = p.t_avanco_ms;
+      if (typeof p.t_retorno_ms === 'number') el('ret_ms').textContent = p.t_retorno_ms;
+      if (typeof p.error_ms === 'number'){
+        el('err_ms').textContent  = p.error_ms;
+        el('err_pct').textContent = (typeof p.error_pct === 'number') ? p.error_pct.toFixed(2) : ((p.error_ms/idealMs*100).toFixed(2));
+      }
+      if (typeof p.cpm_instant === 'number') el('cpm_inst').textContent = p.cpm_instant.toFixed(1);
+      if (typeof p.cpm_window === 'number')  el('cpm_win').textContent  = p.cpm_window.toFixed(1);
+
+      // Janela
+      if (typeof p.cycle_avg_ms === 'number') el('avg_ms').textContent = p.cycle_avg_ms;
+      if (typeof p.cycle_p95_ms === 'number') el('p95_ms').textContent = p.cycle_p95_ms;
+      if (typeof p.cycle_min_ms === 'number') el('min_ms').textContent = p.cycle_min_ms;
+      if (typeof p.cycle_max_ms === 'number') el('max_ms').textContent = p.cycle_max_ms;
+      if (typeof p.cycle_seq   === 'number') el('seq').textContent     = p.cycle_seq;
+
+      // Status PASS/FAIL
+      if (typeof p.pass === 'boolean') setPill(p.pass);
+      else if (typeof p.error_ms === 'number') setPill(Math.abs(p.error_ms) <= tolMs);
+
+      // Gráficos de ciclo
+      if (typeof p.observed_cycle_ms === 'number' && typeof p.error_ms === 'number'){
+        pushCyclePoint(p.cycle_seq ?? (labels.length+1), p.observed_cycle_ms, p.error_ms);
+      }
+    };
+  }
+  connectWS();
+</script>
+</body>
+</html>
