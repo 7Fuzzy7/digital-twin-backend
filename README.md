@@ -1,6 +1,6 @@
-# Digital Twin Backend (TS) — Metrics + Chart
+# Digital Twin Backend (JS) — pronto pra produção leve
 
-## Dev
+## Rodar
 ```bash
 npm i
 cp .env.example .env
@@ -12,14 +12,18 @@ Endpoints:
 - GET `/health`
 - GET `/data/last`
 - GET `/data/events?limit=200`
+- POST `/data`
 - GET `/metrics` (Prometheus)
-- Static: `/debug.html`, `/chart.html`
 
-## Prometheus scrape example (prometheus.yml)
-```yaml
-scrape_configs:
-  - job_name: 'digital-twin-backend'
-    static_configs:
-      - targets: ['localhost:3000']
-    metrics_path: /metrics
+Front:
+- `http://localhost:3000/debug.html`
+- `http://localhost:3000/chart.html` (duas séries + thresholds)
+
+## .env
+```env
+PORT=3000
+WS_PATH=/ws
+CORS_ORIGIN=*
+THRESHOLD_TOP_MS=1000
+THRESHOLD_BASE_MS=1000
 ```
