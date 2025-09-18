@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Digital Twin — Debug WS/HTTP</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    input[type=text] { padding: 8px; min-width: 360px; }
+    button { padding: 8px 12px; cursor: pointer; }
+    #status { font-weight: 600; }
+    pre { background: #f7f7f7; padding: 12px; border-radius: 8px; overflow: auto; max-height: 240px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .card { border: 1px solid #e3e3e3; border-radius: 10px; padding: 12px; }
+    .muted { color: #666; font-size: 0.9rem; }
+    .ok { color: #0b7; }
+    .err { color: #c00; }
+    ul { margin: 0; padding-left: 20px; }
+    li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Digital Twin — Debug</h1>
+  <div class="row">
+    <label for="wsUrl">WebSocket URL:</label>
+    <input id="wsUrl" type="text" value="ws://localhost:3000/ws" />
+    <button id="btnConnect">Conectar</button>
+    <span id="status" class="muted">desconectado</span>
+  </div>
+
+  <p class="muted">Dicas: o servidor expõe <code>GET /health</code>, <code>GET /data/last</code>, <code>GET /data/events?limit=N</code> e WS em <code>/ws</code>.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Último estado (<code>/data/last</code>)</h3>
+      <div class="row">
+        <button id="btnFetchLast">Buscar último</button>
+        <span id="lastStatus" class="muted"></span>
+      </div>
+      <pre id="lastBox">{}</pre>
+    </div>
+    <div class="card">
+      <h3>Histórico (<code>/data/events?limit=20</code>)</h3>
+      <div class="row">
+        <input id="limit" type="text" value="20" style="width:80px" />
+        <button id="btnFetchEvents">Buscar histórico</button>
+        <span id="eventsStatus" class="muted"></span>
+      </div>
+      <pre id="eventsBox">[]</pre>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h3>Mensagens recebidas via WebSocket</h3>
+    <pre id="wsBox"></pre>
+    <div class="row">
+      <button id="btnClear">Limpar</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h3>Enviar JSON via WebSocket</h3>
+    <p class="muted">Envie frames no formato esperado pelo backend (ex.: <code>{"topic":"press/cycle","payload":{"event":"top","t_ms":1234}}</code>).</p>
+    <textarea id="wsSend" rows="5" style="width:100%">{ "topic": "press/cycle", "payload": { "event": "top", "t_ms": 1234 } }</textarea>
+    <div class="row" style="margin-top:8px;">
+      <button id="btnSendWS">Enviar pelo WS</button>
+      <span id="sendStatus" class="muted"></span>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let socket = null;
+
+    function append(box, msg) {
+      box.textContent += (box.textContent ? "\n" : "") + msg;
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function pretty(obj) {
+      try { return JSON.stringify(obj, null, 2); } catch { return String(obj); }
+    }
+
+    $("btnConnect").addEventListener("click", () => {
+      const url = $("wsUrl").value.trim();
+      if (socket && socket.readyState === WebSocket.OPEN) socket.close();
+      $("status").className = "muted";
+      $("status").textContent = "conectando...";
+
+      socket = new WebSocket(url);
+      socket.onopen = () => {
+        $("status").className = "ok";
+        $("status").textContent = "conectado";
+      };
+      socket.onclose = () => {
+        $("status").className = "muted";
+        $("status").textContent = "desconectado";
+      };
+      socket.onerror = (e) => {
+        $("status").className = "err";
+        $("status").textContent = "erro (ver console)";
+        console.error(e);
+      };
+      socket.onmessage = (ev) => {
+        append($("wsBox"), ev.data);
+      };
+    });
+
+    $("btnClear").addEventListener("click", () => { $("wsBox").textContent = ""; });
+
+    $("btnFetchLast").addEventListener("click", async () => {
+      $("lastStatus").textContent = "carregando...";
+      try {
+        const res = await fetch("/data/last");
+        const json = await res.json();
+        $("lastBox").textContent = pretty(json);
+        $("lastStatus").textContent = "ok";
+        $("lastStatus").className = "ok";
+      } catch (e) {
+        $("lastStatus").textContent = "erro";
+        $("lastStatus").className = "err";
+      }
+    });
+
+    $("btnFetchEvents").addEventListener("click", async () => {
+      const limit = Number($("limit").value || 20);
+      $("eventsStatus").textContent = "carregando...";
+      try {
+        const res = await fetch("/data/events?limit=" + limit);
+        const json = await res.json();
+        $("eventsBox").textContent = pretty(json);
+        $("eventsStatus").textContent = "ok";
+        $("eventsStatus").className = "ok";
+      } catch (e) {
+        $("eventsStatus").textContent = "erro";
+        $("eventsStatus").className = "err";
+      }
+    });
+
+    $("btnSendWS").addEventListener("click", () => {
+      const raw = $("wsSend").value;
+      try {
+        const obj = JSON.parse(raw);
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+          $("sendStatus").textContent = "WS desconectado";
+          $("sendStatus").className = "err";
+          return;
+        }
+        socket.send(JSON.stringify(obj));
+        $("sendStatus").textContent = "enviado";
+        $("sendStatus").className = "ok";
+      } catch (e) {
+        $("sendStatus").textContent = "JSON inválido";
+        $("sendStatus").className = "err";
+      }
+    });
+  </script>
+</body>
+</html>

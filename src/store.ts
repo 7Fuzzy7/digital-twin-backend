@@ -10,6 +10,11 @@ export class RingBuffer<T> {
   getAll() {
     return [...this.buffer];
   }
+
+  tail(n: number) {
+    const a = this.getAll();
+    return a.slice(-n);
+  }
 }
 
-export const events = new RingBuffer<any>(500);
+export const events = new RingBuffer<any>(1000);

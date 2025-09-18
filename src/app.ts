@@ -14,6 +14,9 @@ app.use(express.json({ limit: '256kb' }));
 app.use(morgan('dev'));
 app.use(rateLimit({ windowMs: 60_000, max: 120 }));
 
+// Static debug client
+app.use(express.static('public'));
+
 app.use('/data', dataRouter);
 
 app.get('/health', (_req, res) => res.send('ok'));
