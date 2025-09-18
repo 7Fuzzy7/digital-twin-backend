@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang=\"pt-BR\">
+<head>
+  <meta charset=\"utf-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <title>Digital Twin — Gráfico em tempo real</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 18px; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+    input, button { padding: 8px; }
+    canvas { width: 100%; max-width: 900px; height: 360px; border: 1px solid #e3e3e3; border-radius: 10px; }
+    .muted { color: #666; }
+    .ok { color: #0b7; }
+    .err { color: #c00; }
+    pre { background: #f7f7f7; padding: 10px; border-radius: 8px; max-height: 220px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Digital Twin — Gráfico (t_ms)</h1>
+  <div class=\"row\">
+    <label for=\"wsUrl\">WS:</label>
+    <input id=\"wsUrl\" type=\"text\" value=\"ws://localhost:3000/ws\" style=\"min-width:380px;\" />
+    <button id=\"btnConnect\">Conectar</button>
+    <span id=\"status\" class=\"muted\">desconectado</span>
+  </div>
+
+  <canvas id=\"chart\" width=\"900\" height=\"360\"></canvas>
+
+  <div class=\"row\" style=\"margin-top:10px;\">
+    <button id=\"btnClear\">Limpar série</button>
+    <span class=\"muted\">Plota <code>payload.t_ms</code> por tempo de chegada.</span>
+  </div>
+
+  <details style=\"margin-top:10px;\">
+    <summary>Últimas mensagens</summary>
+    <pre id=\"log\"></pre>
+  </details>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const cvs = $("chart");
+    const ctx = cvs.getContext("2d");
+    let socket = null;
+    let points = []; // {x: timestamp (ms), y: t_ms}
+    const MAX_POINTS = 300;
+
+    function log(msg) {
+      const el = $("log");
+      el.textContent += (el.textContent ? "\n" : "") + msg;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function draw() {
+      const w = cvs.width, h = cvs.height;
+      ctx.clearRect(0, 0, w, h);
+
+      // axes
+      ctx.strokeStyle = "#bbb";
+      ctx.beginPath();
+      ctx.moveTo(40, 10);
+      ctx.lineTo(40, h-30);
+      ctx.lineTo(w-10, h-30);
+      ctx.stroke();
+
+      if (points.length === 0) return;
+
+      const now = Date.now();
+      // Show last 60s window
+      const WINDOW_MS = 60_000;
+      const minX = now - WINDOW_MS;
+      const visible = points.filter(p => p.x >= minX);
+      if (visible.length === 0) return;
+
+      const ys = visible.map(p => p.y).filter(y => typeof y === "number");
+      const yMin = Math.min(...ys);
+      const yMax = Math.max(...ys);
+      const pad = (yMax - yMin) * 0.1 || 10;
+      const minY = yMin - pad;
+      const maxY = yMax + pad;
+
+      // grid lines (horizontal)
+      ctx.strokeStyle = "#eee";
+      ctx.fillStyle = "#666";
+      ctx.font = "12px system-ui";
+      for (let i=0;i<5;i++){
+        const yy = h-30 - (i*(h-40)/4);
+        ctx.beginPath(); ctx.moveTo(40, yy); ctx.lineTo(w-10, yy); ctx.stroke();
+        const v = (minY + (i*(maxY-minY)/4)).toFixed(0);
+        ctx.fillText(v, 6, yy+4);
+      }
+
+      // polyline
+      ctx.strokeStyle = "#0077cc";
+      ctx.beginPath();
+      visible.forEach((p, idx) => {
+        const x = 40 + ( (p.x - minX) / WINDOW_MS ) * (w-50);
+        const y = h-30 - ( (p.y - minY) / (maxY - minY || 1) ) * (h-40);
+        if (idx === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      });
+      ctx.stroke();
+    }
+
+    function addPoint(t_ms) {
+      points.push({ x: Date.now(), y: Number(t_ms) });
+      if (points.length > MAX_POINTS) points.shift();
+      draw();
+    }
+
+    $("btnConnect").addEventListener("click", () => {
+      const url = $("wsUrl").value.trim();
+      if (socket && socket.readyState === WebSocket.OPEN) socket.close();
+      $("status").className = "muted";
+      $("status").textContent = "conectando...";
+
+      socket = new WebSocket(url);
+      socket.onopen = () => {
+        $("status").className = "ok";
+        $("status").textContent = "conectado";
+      };
+      socket.onclose = () => {
+        $("status").className = "muted";
+        $("status").textContent = "desconectado";
+      };
+      socket.onerror = (e) => {
+        $("status").className = "err";
+        $("status").textContent = "erro (console)";
+        console.error(e);
+      };
+      socket.onmessage = (ev) => {
+        try {
+          const obj = JSON.parse(ev.data);
+          const tms = obj?.payload?.t_ms;
+          if (typeof tms === "number") addPoint(tms);
+          log(ev.data);
+        } catch (e) {
+          log("invalid JSON: " + ev.data);
+        }
+      };
+    });
+
+    $("btnClear").addEventListener("click", () => { points = []; draw(); });
+
+    setInterval(draw, 1000);
+  </script>
+</body>
+</html>
