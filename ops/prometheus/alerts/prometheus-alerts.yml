@@ -1,0 +1,24 @@
+groups:
+  - name: digital-twin-alerts
+    rules:
+      - alert: DigitalTwinNoEvents
+        expr: time() - dt_last_event_timestamp_seconds > 30
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "Digital Twin: sem eventos recentes"
+          description: "Não recebemos eventos há mais de 30s."
+      - alert: DigitalTwinTopLatencyHigh
+        expr: dt_last_top_ms > dt_threshold_top_ms
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "Digital Twin: t_ms de TOP acima do limite"
+          description: "Último t_ms(top) está acima do threshold configurado."
+      - alert: DigitalTwinBaseLatencyHigh
+        expr: dt_last_base_ms > dt_threshold_base_ms
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "Digital Twin: t_ms de BASE acima do limite"
+          description: "Último t_ms(base) está acima do threshold configurado."

@@ -1,23 +1,28 @@
-# Digital Twin Backend (JS) — pronto pra produção leve
+# Digital Twin Backend — PRO Pack (JS)
 
-## Rodar
+Melhorias:
+- ✅ Env validation (Joi) com defaults seguros
+- ✅ CORS whitelist (CSV) ou `*`
+- ✅ Buffer 2000 eventos + histórico `/data/events`
+- ✅ Métricas Prometheus (`/metrics`) + thresholds
+- ✅ WS heartbeat + graceful shutdown (SIGINT/SIGTERM)
+- ✅ Endpoints `health` e `ready` para probes
+- ✅ Dockerfile e `docker-compose.yml` com Prometheus + Grafana (dashboard e datasource provisionados)
+
+## Rodar local
 ```bash
 npm i
 cp .env.example .env
 npm run dev
 ```
 
-Endpoints:
-- WS: `ws://localhost:3000/ws`
-- GET `/health`
-- GET `/data/last`
-- GET `/data/events?limit=200`
-- POST `/data`
-- GET `/metrics` (Prometheus)
-
-Front:
-- `http://localhost:3000/debug.html`
-- `http://localhost:3000/chart.html` (duas séries + thresholds)
+## Docker (tudo junto: backend + Prometheus + Grafana)
+```bash
+docker compose -f ops/docker-compose.yml up -d --build
+```
+- Backend: http://localhost:3000
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3001 (user: admin / pass: admin)
 
 ## .env
 ```env

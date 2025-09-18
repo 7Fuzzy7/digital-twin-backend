@@ -1,4 +1,4 @@
-"""WebSocket -> SQLite consumer for Digital Twin backend (JS version)."""
+"""WebSocket -> SQLite consumer (PRO pack)."""
 import os, asyncio, json, sqlite3
 from datetime import datetime
 import websockets

@@ -1,0 +1,33 @@
+services:
+  backend:
+    build: ..
+    container_name: dtwin-backend
+    environment:
+      - PORT=3000
+      - WS_PATH=/ws
+      - CORS_ORIGIN=*
+      - THRESHOLD_TOP_MS=1000
+      - THRESHOLD_BASE_MS=1000
+    ports:
+      - "3000:3000"
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: dtwin-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts:/etc/prometheus/alerts:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    ports:
+      - "9090:9090"
+  grafana:
+    image: grafana/grafana:latest
+    container_name: dtwin-grafana
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
