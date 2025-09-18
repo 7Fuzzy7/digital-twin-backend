@@ -1,0 +1,17 @@
+{
+  "press/cycle": {
+    "meta": {
+      "cylinder": "DSNU-25-PPS-A",
+      "stroke_mm": 100,
+      "pressure_bar": 6
+    },
+    "top": {
+      "t_ms": 880,
+      "tolerance_ms": 90
+    },
+    "base": {
+      "t_ms": 830,
+      "tolerance_ms": 110
+    }
+  }
+}

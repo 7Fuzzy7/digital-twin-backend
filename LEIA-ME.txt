@@ -1,0 +1,12 @@
+ESTE PACOTE É A VERSÃO FINAL COMPLETA ✅
+
+Inclui:
+- Backend Node (server.js) com comparação gêmeo ideal
+- chart.html com linha ideal e marcadores fora de spec
+- ideal.json ajustado (top=880±90, base=830±110)
+- Dockerfile + docker-compose (backend + Prometheus + Grafana)
+- Prometheus com alertas
+- Grafana provisionado + anotações de alerta
+
+Basta rodar:
+docker compose -f ops/docker-compose.yml up -d --build
