@@ -1,184 +1,28 @@
-<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Digital Twin — Gráfico 2 séries (top/base) + Thresholds</title>
-  <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 18px; }
-    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
-    input, button, select { padding: 8px; }
-    canvas { width: 100%; max-width: 980px; height: 380px; border: 1px solid #e3e3e3; border-radius: 10px; }
-    .muted { color: #666; }
-    .ok { color: #0b7; }
-    .err { color: #c00; }
-    pre { background: #f7f7f7; padding: 10px; border-radius: 8px; max-height: 220px; overflow: auto; }
-    .legend { display:flex; gap: 16px; align-items:center; }
-    .dot { width: 12px; height: 12px; border-radius: 50%; display:inline-block; }
-    .dot.top { background:#0077cc; }
-    .dot.base { background:#cc7700; }
-  </style>
-</head>
-<body>
-  <h1>Digital Twin — Gráfico (t_ms) com 2 séries + Thresholds</h1>
-  <div class="row">
-    <label for="wsUrl">WS:</label>
-    <input id="wsUrl" type="text" value="ws://localhost:3000/ws" style="min-width:380px;" />
-    <button id="btnConnect">Conectar</button>
-    <span id="status" class="muted">desconectado</span>
-  </div>
-
-  <div class="row">
-    <label>Janela:</label>
-    <select id="window">
-      <option value="15000">15s</option>
-      <option value="30000">30s</option>
-      <option value="60000" selected>60s</option>
-      <option value="180000">3min</option>
-      <option value="600000">10min</option>
-    </select>
-    <label><input type="checkbox" id="showTop" checked> Mostrar <span class="dot top"></span> top</label>
-    <label><input type="checkbox" id="showBase" checked> Mostrar <span class="dot base"></span> base</label>
-    <button id="btnClear">Limpar série</button>
-    <label style="margin-left:12px">Threshold top (ms): <input id="thrTop" type="number" value="1000" style="width:100px"></label>
-    <label>Threshold base (ms): <input id="thrBase" type="number" value="1000" style="width:100px"></label>
-    <button id="btnApplyThr">Aplicar</button>
-  </div>
-
-  <div class="legend">
-    <span class="dot top"></span> top
-    <span class="dot base"></span> base
-  </div>
-  <canvas id="chart" width="980" height="380"></canvas>
-
-  <details style="margin-top:10px;">
-    <summary>Últimas mensagens</summary>
-    <pre id="log"></pre>
-  </details>
-
-  <script>
-    const $ = (id) => document.getElementById(id);
-    const cvs = $("chart");
-    const ctx = cvs.getContext("2d");
-    let socket = null;
-    let points = []; // [{x:ts, y:t_ms, event:'top'|'base'|other}]
-    const MAX_POINTS = 1000;
-    let thrTop = 1000; let thrBase = 1000;
-
-    function log(msg) {
-      const el = $("log");
-      el.textContent += (el.textContent ? "\n" : "") + msg;
-      el.scrollTop = el.scrollHeight;
-    }
-
-    function draw() {
-      const w = cvs.width, h = cvs.height;
-      ctx.clearRect(0, 0, w, h);
-
-      const now = Date.now();
-      const WINDOW_MS = Number($("window").value);
-      const minX = now - WINDOW_MS;
-      const visible = points.filter(p => p.x >= minX);
-      // axes
-      ctx.strokeStyle = "#bbb";
-      ctx.beginPath(); ctx.moveTo(40, 10); ctx.lineTo(40, h-30); ctx.lineTo(w-10, h-30); ctx.stroke();
-      if (visible.length === 0) return;
-
-      const topOn = $("showTop").checked;
-      const baseOn = $("showBase").checked;
-
-      const topPts = visible.filter(p => p.event === "top");
-      const basePts = visible.filter(p => p.event === "base");
-      const used = [].concat(topOn ? topPts : []).concat(baseOn ? basePts : []);
-
-      const ys = used.map(p => p.y).filter(y => typeof y === "number");
-      const yMin = Math.min(...ys);
-      const yMax = Math.max(...ys);
-      const pad = (yMax - yMin) * 0.1 || 10;
-      const minY = yMin - pad;
-      const maxY = yMax + pad;
-
-      // grid
-      ctx.strokeStyle = "#eee";
-      ctx.fillStyle = "#666";
-      ctx.font = "12px system-ui";
-      for (let i=0;i<5;i++){
-        const yy = h-30 - (i*(h-40)/4);
-        ctx.beginPath(); ctx.moveTo(40, yy); ctx.lineTo(w-10, yy); ctx.stroke();
-        const v = (minY + (i*(maxY-minY)/4)).toFixed(0);
-        ctx.fillText(v, 6, yy+4);
-      }
-
-      function line(series, color) {
-        if (series.length === 0) return;
-        ctx.strokeStyle = color;
-        ctx.beginPath();
-        series.forEach((p, idx) => {
-          const x = 40 + ((p.x - minX) / WINDOW_MS) * (w-50);
-          const y = h-30 - ((p.y - minY) / (maxY - minY || 1)) * (h-40);
-          if (idx === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-        });
-        ctx.stroke();
-      }
-
-      if (topOn) line(topPts, "#0077cc");
-      if (baseOn) line(basePts, "#cc7700");
-
-      // threshold lines
-      function horiz(value, color) {
-        const y = h-30 - ((value - minY) / (maxY - minY || 1)) * (h-40);
-        ctx.strokeStyle = color;
-        ctx.beginPath(); ctx.moveTo(40, y); ctx.lineTo(w-10, y); ctx.stroke();
-      }
-      horiz(thrTop, "#0077cc");
-      horiz(thrBase, "#cc7700");
-
-      // highlight breaches
-      const breaches = [];
-      topPts.forEach(p => { if (typeof p.y==="number" && p.y > thrTop) breaches.push({...p, color:"#0077cc"}); });
-      basePts.forEach(p => { if (typeof p.y==="number" && p.y > thrBase) breaches.push({...p, color:"#cc7700"}); });
-      breaches.forEach(p => {
-        const x = 40 + ((p.x - minX) / WINDOW_MS) * (w-50);
-        const y = h-30 - ((p.y - minY) / (maxY - minY || 1)) * (h-40);
-        ctx.fillStyle = p.color;
-        ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI*2); ctx.fill();
-      });
-    }
-
-    function addPoint(evName, t_ms) {
-      points.push({ x: Date.now(), y: Number(t_ms), event: evName || "other" });
-      if (points.length > MAX_POINTS) points.shift();
-      draw();
-    }
-
-    $("btnConnect").addEventListener("click", () => {
-      const url = $("wsUrl").value.trim();
-      if (socket && socket.readyState === WebSocket.OPEN) socket.close();
-      $("status").className = "muted";
-      $("status").textContent = "conectando...";
-
-      socket = new WebSocket(url);
-      socket.onopen = () => { $("status").className = "ok"; $("status").textContent = "conectado"; };
-      socket.onclose = () => { $("status").className = "muted"; $("status").textContent = "desconectado"; };
-      socket.onerror = (e) => { $("status").className = "err"; $("status").textContent = "erro (console)"; console.error(e); };
-      socket.onmessage = (ev) => {
-        try {
-          const obj = JSON.parse(ev.data);
-          const evt = obj?.payload?.event;
-          const tms = obj?.payload?.t_ms;
-          if (typeof tms === "number") addPoint(evt, tms);
-          log(ev.data);
-        } catch (e) { log("invalid JSON: " + ev.data); }
-      };
-    });
-
-    $("btnClear").addEventListener("click", () => { points = []; draw(); });
-    document.getElementById('btnApplyThr').addEventListener('click', () => {
-      thrTop = Number((document.getElementById('thrTop')).value || 1000);
-      thrBase = Number((document.getElementById('thrBase')).value || 1000);
-      draw();
-    });
-    setInterval(draw, 1000);
-  </script>
-</body>
-</html>
+<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Digital Twin — Tempo + Vibração</title>
+<style>body{font-family:system-ui;margin:18px}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}canvas{width:100%;max-width:980px;height:320px;border:1px solid #e3e3e3;border-radius:10px;margin-top:8px}.muted{color:#666}.dot{width:12px;height:12px;border-radius:50%;display:inline-block}.dot.top{background:#07c}.dot.base{background:#c70}.dot.ideal{background:#333}</style></head>
+<body><h1>Digital Twin — Tempo (t_ms) e Vibração RMS (g)</h1>
+<div class='row'><label>WS:</label><input id='wsUrl' value='ws://localhost:3000/ws' style='min-width:380px'><button id='btnConnect'>Conectar</button> <span id='status' class='muted'>desconectado</span></div>
+<div class='row'><label>Janela:</label><select id='window'><option value='15000'>15s</option><option value='30000'>30s</option><option value='60000' selected>60s</option><option value='180000'>3min</option></select>
+<label><input type='checkbox' id='showTop' checked> <span class='dot top'></span> top</label>
+<label><input type='checkbox' id='showBase' checked> <span class='dot base'></span> base</label>
+<span style='margin-left:12px'><span class='dot ideal'></span> linha ideal</span></div>
+<h3>Tempo de ciclo (t_ms)</h3><canvas id='cTime' width='980' height='320'></canvas>
+<h3>Vibração RMS (g)</h3><canvas id='cVib' width='980' height='320'></canvas>
+<script>
+const $=id=>document.getElementById(id);
+const ctxT=$('cTime').getContext('2d'), ctxV=$('cVib').getContext('2d');
+let pts=[], vpts=[], MAX=1000, ideal={top:null,base:null};
+function axis(ctx,w,h){ctx.strokeStyle='#bbb';ctx.beginPath();ctx.moveTo(40,10);ctx.lineTo(40,h-30);ctx.lineTo(w-10,h-30);ctx.stroke();}
+function grid(ctx,w,h,minY,maxY){ctx.strokeStyle='#eee';ctx.fillStyle='#666';ctx.font='12px system-ui';for(let i=0;i<5;i++){const yy=h-30-(i*(h-40)/4);ctx.beginPath();ctx.moveTo(40,yy);ctx.lineTo(w-10,yy);ctx.stroke();const v=(minY+(i*(maxY-minY)/4)).toFixed(2);ctx.fillText(v,6,yy+4);}}
+function drawTime(){const cvs=$('cTime'),w=cvs.width,h=cvs.height;ctxT.clearRect(0,0,w,h);axis(ctxT,w,h);const now=Date.now(),W=+$('window').value,minX=now-W;const vis=pts.filter(p=>p.x>=minX);if(!vis.length)return;const topOn=$('showTop').checked,baseOn=$('showBase').checked;const tps=vis.filter(p=>p.ev==='top'), bps=vis.filter(p=>p.ev==='base');const used=[].concat(topOn?tps:[], baseOn?bps:[]);const ys=used.map(p=>p.y);const ymin=Math.min(...ys), ymax=Math.max(...ys);const pad=(ymax-ymin)*.1||10;const minY=ymin-pad,maxY=ymax+pad;grid(ctxT,w,h,minY,maxY);
+function line(series,color){if(!series.length)return;ctxT.strokeStyle=color;ctxT.beginPath();series.forEach((p,i)=>{const x=40+((p.x-minX)/W)*(w-50);const y=h-30-((p.y-minY)/(maxY-minY||1))*(h-40);if(i===0)ctxT.moveTo(x,y);else ctxT.lineTo(x,y);});ctxT.stroke();}
+if(topOn) line(tps,'#07c'); if(baseOn) line(bps,'#c70');
+function horiz(v){const y=h-30-((v-minY)/(maxY-minY||1))*(h-40);ctxT.strokeStyle='#333';ctxT.setLineDash([5,5]);ctxT.beginPath();ctxT.moveTo(40,y);ctxT.lineTo(w-10,y);ctxT.stroke();ctxT.setLineDash([]);}
+if(ideal.top!=null&&topOn)horiz(ideal.top); if(ideal.base!=null&&baseOn)horiz(ideal.base);
+vis.forEach(p=>{if(p.bad){const x=40+((p.x-minX)/W)*(w-50);const y=h-30-((p.y-minY)/(maxY-minY||1))*(h-40);ctxT.fillStyle=p.ev==='top'?'#07c':'#c70';ctxT.beginPath();ctxT.arc(x,y,3,0,Math.PI*2);ctxT.fill();}});}
+function drawVib(){const cvs=$('cVib'),w=cvs.width,h=cvs.height;ctxV.clearRect(0,0,w,h);axis(ctxV,w,h);const now=Date.now(),W=+$('window').value,minX=now-W;const vis=vpts.filter(p=>p.x>=minX);if(!vis.length)return;const ys=vis.map(p=>p.y);const ymin=Math.min(...ys,0), ymax=Math.max(...ys,1);const pad=(ymax-ymin)*.1||.05;const minY=ymin-pad,maxY=ymax+pad;grid(ctxV,w,h,minY,maxY);ctxV.strokeStyle='#555';ctxV.beginPath();vis.forEach((p,i)=>{const x=40+((p.x-minX)/W)*(w-50);const y=h-30-((p.y-minY)/(maxY-minY||1))*(h-40);if(i===0)ctxV.moveTo(x,y);else ctxV.lineTo(x,y);});ctxV.stroke();}
+function addTime(ev,t,ana){if(ana&&typeof ana.ideal_ms==='number'){if(ev==='top')ideal.top=ana.ideal_ms; if(ev==='base')ideal.base=ana.ideal_ms;}pts.push({x:Date.now(),y:+t,ev:ev,bad:ana?ana.in_spec===false:false});if(pts.length>MAX)pts.shift();drawTime();}
+function addVib(v){if(typeof v!=='number')return;vpts.push({x:Date.now(),y:+v});if(vpts.length>MAX)vpts.shift();drawVib();}
+$('btnConnect').onclick=()=>{const ws=new WebSocket($('wsUrl').value.trim());$('status').textContent='conectando...';ws.onopen=()=>$('status').textContent='conectado';ws.onclose=()=>$('status').textContent='desconectado';ws.onerror=()=>$('status').textContent='erro (console)';ws.onmessage=ev=>{try{const o=JSON.parse(ev.data);const e=o?.payload?.event;const t=o?.payload?.t_ms;const a=o?.analysis||null;const vr=o?.payload?.v_rms_g;if(typeof t==='number')addTime(e,t,a);if(typeof vr==='number')addVib(+vr);}catch{}};};
+setInterval(()=>{drawTime();drawVib();},1000);
+</script></body></html>
