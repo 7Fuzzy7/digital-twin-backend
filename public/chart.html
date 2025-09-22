@@ -1,1 +1,13 @@
-<h3>Chart simples — abra Grafana para visão completa.</h3>
+<!doctype html><meta charset="utf-8"><title>Digital Twin - Eventos</title>
+<body style="font-family:system-ui;margin:16px">
+<h2>Digital Twin - Eventos (debug)</h2>
+<button id="btn">Conectar</button> <span id="s">off</span>
+<pre id="log" style="background:#111;color:#0f0;padding:8px;height:200px;overflow:auto"></pre>
+<script>
+const log=(m)=>{const el=document.getElementById('log'); el.textContent+=m+"\n"; el.scrollTop=el.scrollHeight;}
+document.getElementById('btn').onclick=()=>{const ws=new WebSocket('ws://'+location.host+'/ws'); document.getElementById('s').textContent='...';
+ws.onopen=()=>document.getElementById('s').textContent='on';
+ws.onclose=()=>document.getElementById('s').textContent='off';
+ws.onmessage=e=>log(e.data);
+};
+</script>
