@@ -1,0 +1,300 @@
+{
+  "title": "Digital Twin — Visão Intuitiva",
+  "tags": [
+    "digital-twin",
+    "press/cycle"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Saúde do Cilindro (%)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 60
+              },
+              {
+                "color": "green",
+                "value": 80
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "dt:health_index",
+          "legendFormat": "Índice de Saúde",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Tempo de Subida (ms)",
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 940
+              },
+              {
+                "color": "red",
+                "value": 970
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "dt_last_top_ms",
+          "legendFormat": "Top (ms)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Tempo de Descida (ms)",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 900
+              },
+              {
+                "color": "red",
+                "value": 940
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "dt_last_base_ms",
+          "legendFormat": "Base (ms)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "% Ciclos Fora da Faixa (15 min)",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0.03
+              },
+              {
+                "color": "yellow",
+                "value": 0.05
+              },
+              {
+                "color": "red",
+                "value": 0.1
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "dt:oos_rate_15m",
+          "legendFormat": "OoS 15m",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tempos de Ciclo (ms) vs Ideal",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      },
+      "targets": [
+        {
+          "expr": "dt_last_top_ms",
+          "legendFormat": "Top (ms)",
+          "refId": "A"
+        },
+        {
+          "expr": "dt_last_base_ms",
+          "legendFormat": "Base (ms)",
+          "refId": "B"
+        },
+        {
+          "expr": "dt_threshold_top_ms",
+          "legendFormat": "Ideal Top",
+          "refId": "C"
+        },
+        {
+          "expr": "dt_threshold_base_ms",
+          "legendFormat": "Ideal Base",
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Vibração RMS (g)",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "dt_last_v_rms_g{event='top'}",
+          "legendFormat": "Top RMS (g)",
+          "refId": "A"
+        },
+        {
+          "expr": "dt_last_v_rms_g{event='base'}",
+          "legendFormat": "Base RMS (g)",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Índice de Saúde (%) e Previsão 24h",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        }
+      },
+      "targets": [
+        {
+          "expr": "dt:health_index",
+          "legendFormat": "Saúde (%)",
+          "refId": "A"
+        },
+        {
+          "expr": "dt:health_index_predict_24h",
+          "legendFormat": "Prev 24h (%)",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Horas até manutenção (HI = 60)",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 24
+              },
+              {
+                "color": "green",
+                "value": 48
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "(dt:health_index - 60) / clamp_min(-deriv(dt:health_index[2h]), 1e-6) / 3600",
+          "legendFormat": "ETA h",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

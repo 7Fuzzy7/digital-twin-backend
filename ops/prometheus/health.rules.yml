@@ -1,0 +1,24 @@
+groups:
+  - name: dt_health_rules
+    interval: 30s
+    rules:
+      - record: dt:oos_rate_15m
+        expr: sum(increase(dt_out_of_spec_total[15m])) / sum(increase(dt_events_total[15m]))
+
+      - record: dt:dev_top_norm
+        expr: clamp_min((abs(dt_deviation_ms{event="top"}) - 0) / 90, 0)
+      - record: dt:dev_base_norm
+        expr: clamp_min((abs(dt_deviation_ms{event="base"}) - 0) / 110, 0)
+
+      - record: dt:v_norm_top
+        expr: dt_last_v_rms_g{event="top"} / 0.05
+      - record: dt:v_norm_base
+        expr: dt_last_v_rms_g{event="base"} / 0.05
+
+      - record: dt:health_index
+        expr: clamp_max(100 - 100 * clamp_min(0.50 * avg(dt:dev_top_norm + dt:dev_base_norm) by (topic)
+              + 0.35 * avg(dt:v_norm_top + dt:v_norm_base) by (topic) / 2
+              + 0.15 * dt:oos_rate_15m, 0), 100)
+
+      - record: dt:health_index_predict_24h
+        expr: predict_linear(dt:health_index[6h], 24*3600)
