@@ -1,0 +1,27 @@
+groups:
+  - name: dt_alerts
+    interval: 30s
+    rules:
+      - alert: DigitalTwinNoEvents
+        expr: time() - dt_last_event_timestamp_seconds > 60
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "Sem eventos recentes (último > 60s)"
+          description: "Verifique conectividade do ESP32 e do backend."
+
+      - alert: DigitalTwinOutOfSpecHigh
+        expr: dt:oos_rate_15m > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "% fora de faixa acima de 5% (15m)"
+          description: "Ajuste mecânico/inspeção pode ser necessária."
+
+      - alert: DigitalTwinOutOfSpecCritical
+        expr: dt:oos_rate_15m > 0.10
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "% fora de faixa acima de 10% (15m)"
+          description: "Condição crítica — programar manutenção imediata."

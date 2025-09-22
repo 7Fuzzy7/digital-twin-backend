@@ -295,6 +295,155 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "type": "stat",
+      "title": "Latência desde o último evento (s)",
+      "gridPos": {
+        "x": 6,
+        "y": 32,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 60
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "time() - dt_last_event_timestamp_seconds",
+          "legendFormat": "latência s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Desvio médio 10m (ms)",
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      },
+      "targets": [
+        {
+          "expr": "avg_over_time(dt_deviation_ms{event='top'}[10m])",
+          "legendFormat": "Top (média 10m)",
+          "refId": "A"
+        },
+        {
+          "expr": "avg_over_time(dt_deviation_ms{event='base'}[10m])",
+          "legendFormat": "Base (média 10m)",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Desvio máximo 10m (ms)",
+      "gridPos": {
+        "x": 12,
+        "y": 44,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        }
+      },
+      "targets": [
+        {
+          "expr": "max_over_time(dt_deviation_ms{event='top'}[10m])",
+          "legendFormat": "Top (máx 10m)",
+          "refId": "A"
+        },
+        {
+          "expr": "max_over_time(dt_deviation_ms{event='base'}[10m])",
+          "legendFormat": "Base (máx 10m)",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "% Fora da Faixa por Hora",
+      "gridPos": {
+        "x": 0,
+        "y": 52,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1
+        }
+      },
+      "targets": [
+        {
+          "expr": "( sum(increase(dt_out_of_spec_total[1h])) by (event) / sum(increase(dt_events_total[1h])) by (event) )",
+          "legendFormat": "{{event}}",
+          "refId": "A"
+        }
+      ]
     }
-  ]
+  ],
+  "annotations": {
+    "list": [
+      {
+        "name": "OoS > 5% (atenção)",
+        "type": "tags",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "Prometheus"
+        },
+        "enable": true,
+        "iconColor": "yellow",
+        "expr": "dt:oos_rate_15m > 0.05",
+        "titleFormat": "⚠️ % fora de faixa alto",
+        "tagKeys": "oos",
+        "textFormat": "OoS 15m acima de 5%"
+      },
+      {
+        "name": "OoS > 10% (crítico)",
+        "type": "tags",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "Prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "dt:oos_rate_15m > 0.10",
+        "titleFormat": "🚨 % fora de faixa crítico",
+        "tagKeys": "oos",
+        "textFormat": "OoS 15m acima de 10%"
+      }
+    ]
+  }
 }
